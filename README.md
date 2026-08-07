@@ -45,9 +45,8 @@ PruebaTecnicaBackend/
 │   ├── app/                     # main.py, client.py (httpx + tenacity)
 │   └── Dockerfile
 ├── docs/
-    ├── propuesta_aws.md          
-    ├── flujograma.png            
-    ├── ejemplos_consumo.md       # Ejemplos de curl (y/o colección Postman)
+    ├── Propuesta_Arquitectura_AWS.pdf       
+    ├── flujograma AWS.png                 
     ├── PruebaTecnica.postman_collection.json   
     └── logs_ejemplo.log          # Captura de una ejecución completa
 \`\`\`
@@ -162,7 +161,8 @@ Una transición no permitida devuelve `422`.
 
 ## Documentación adicional
 
-- Propuesta de arquitectura AWS: [`docs/propuesta_aws.md`](docs/propuesta_aws.md)
+- Propuesta de arquitectura AWS: [`docs/Propuesta_Arquitectura_AWS.pdf`](docs/Propuesta_Arquitectura_AWS.pdf)
+- Flujograma de arquitectura: [`docs/Flujograma_AWS.png`](docs/Flujograma_AWS.png)
 - Colección de Postman (ejemplos de consumo): [`docs/PruebaTecnicaBanckend.postman_collection.json`](docs/PruebaTecnicaBanckend.postman_collection.json)
 - Logs de una ejecución de ejemplo: [`docs/logs_ejemplo.log`](docs/logs_ejemplo.log)
 - Swagger interactivo: `/docs` con el proyecto en ejecución
