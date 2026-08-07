@@ -1,17 +1,25 @@
 from sqlalchemy import text
 from app.db.session import get_db
-from app.core.logging import logger
 from fastapi import FastAPI, Depends
+from sqlalchemy.exc import DBAPIError
 from app.api.solicitudes import router
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.middleware import LoggingMiddleware
-
+from app.core.exceptions import database_exception_handler
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from app.core.exceptions import http_exception_handler, unhandled_exception_handler
 
 
 app = FastAPI(title="API de Solicitudes Institucionales para prueba tecnica", version="1.0.0")
 
-app.add_middleware(LoggingMiddleware)
 app.include_router(router)
+app.add_middleware(LoggingMiddleware)
+app.add_exception_handler(OSError, database_exception_handler)
+app.add_exception_handler(DBAPIError, database_exception_handler)
+app.add_exception_handler(Exception, unhandled_exception_handler)
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+
 
 
 @app.get("/health")
