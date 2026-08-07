@@ -21,7 +21,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         elif tipo_error == "enum":
             mensaje = f"El campo '{campo}' tiene un valor no permitido"
         elif tipo_error == "value_error":
-            mensaje = f"El campo '{campo}' no es válido: {error['msg']}"
+            mensaje = f"El campo '{campo}' no es valido: {error['msg']}"
         else:
             mensaje = f"El campo '{campo}' tiene un formato incorrecto"
 
