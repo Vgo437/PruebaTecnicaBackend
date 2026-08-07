@@ -2,9 +2,44 @@ from fastapi import Request
 from app.core.logging import logger
 from sqlalchemy.exc import DBAPIError
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from sqlalchemy.exc import DBAPIError
+
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Transforma los errores de validacion de Pydantic en mensajes legibles para el cliente."""
+    errores_legibles = []
+
+    for error in exc.errors():
+        campo = error["loc"][-1]  # el nombre del campo que fallo
+        tipo_error = error["type"]
+
+        if tipo_error == "missing":
+            mensaje = f"El campo '{campo}' es obligatorio"
+        elif tipo_error in ("string_type", "int_type", "float_type", "bool_type"):
+            mensaje = f"El campo '{campo}' tiene un formato incorrecto"
+        elif tipo_error == "enum":
+            mensaje = f"El campo '{campo}' tiene un valor no permitido"
+        elif tipo_error == "value_error":
+            mensaje = f"El campo '{campo}' no es válido: {error['msg']}"
+        else:
+            mensaje = f"El campo '{campo}' tiene un formato incorrecto"
+
+        errores_legibles.append(mensaje)
+
+    logger.warning(
+        "Error de validacion de datos",
+        extra={
+            "method": request.method,
+            "endpoint": request.url.path,
+            "errores": errores_legibles,
+        },
+    )
+
+    return JSONResponse(
+        status_code=422,
+        content={"detail": errores_legibles},
+    )
 
 async def database_exception_handler(request: Request, exc: DBAPIError):
     """Maneja errores de conexion/comunicacion con la base de datos."""
