@@ -9,6 +9,10 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     """Registra cada request con su id de correlacion, metodo, endpoint, status y duracion."""
 
     async def dispatch(self, request: Request, call_next):
+        
+        if request.url.path in ("/health", "/health/ready"):
+            return await call_next(request)
+    
         request_id = str(uuid.uuid4())
         inicio = time.time()
 
