@@ -21,7 +21,7 @@ Tres servicios orquestados con Docker Compose:
 api/ (rutas) → services/ (negocio) → repositories/ (datos) → models/ (SQLAlchemy)
 ```
 
-Cada capa solo se comunica con la inmediatamente inferior, permitiendo testear la lógica de negocio sin depender del framework HTTP, y aislar cambios de motor de BD en `repositories/`.
+Cada capa solo se comunica con la inmediatamente inferior, permitiendo testear la lógica de negocio sin depender del framework HTTP, y aislar cambios de motor de BD en `repositories/`. La capa `services/` no depende de FastAPI: lanza excepciones de dominio propias en lugar de `HTTPException` (ver "Decisiones técnicas").
 
 ## Estructura del proyecto
 
@@ -31,11 +31,11 @@ PruebaTecnicaBackend/
 │   ├── app/
 │   │   ├── main.py              # Entry point, middlewares, exception handlers
 │   │   ├── api/solicitud.py     # Endpoints
-│   │   ├── core/                # config, logging, middleware, exceptions
+│   │   ├── core/                # config, logging, middleware, exceptions, domain_exceptions
 │   │   ├── models/solicitud.py  # Modelo SQLAlchemy
 │   │   ├── schemas/solicitud.py # Schemas Pydantic + catalogos (Enum)
 │   │   ├── repositories/        # Acceso a datos
-│   │   ├── services/            # Logica de negocio
+│   │   ├── services/            # Logica de negocio (excepciones de dominio propias)
 │   │   └── db/                  # base.py, session.py
 │   ├── alembic/                 # Migraciones
 │   ├── tests/                   # conftest.py, test_solicitud.py, test_health.py
@@ -93,6 +93,8 @@ docker compose up --build
 
 Esto levanta `db`, `db_test`, `api` (aplicando las migraciones automáticamente antes de iniciar) y `consumer` (envía un lote de solicitudes de prueba y finaliza).
 
+> **Nota:** el comando de arranque del servicio `api` no incluye `--reload`, pensado para una entrega evaluable estable. Para desarrollo activo con recarga automática, se puede agregar `--reload` al `command` del servicio `api` en `docker-compose.yml`.
+
 Verificar:
 ```bash
 curl http://localhost:8000/health
@@ -105,6 +107,7 @@ Swagger: `http://localhost:8000/docs`
 ```bash
 docker compose exec api pytest -v
 ```
+Incluye 12 pruebas: los 11 casos funcionales básicos (creación, validaciones, duplicados, consultas, transiciones de estado, health checks) más una prueba de concurrencia real con `asyncio.gather`, que dispara dos creaciones simultáneas con el mismo `identificador_externo` para validar el `UNIQUE constraint` bajo una condición de carrera real.
 
 **Consumidor manual** (para volver a ejecutarlo bajo demanda):
 ```bash
@@ -152,15 +155,19 @@ completada / rechazada → (finales)
 ```
 Una transición no permitida devuelve `422`.
 
-**Duplicados a nivel de BD.** `identificador_externo` tiene `UNIQUE` en PostgreSQL, no solo validación en código — evita condiciones de carrera entre un `SELECT` de verificación y el `INSERT`. El `IntegrityError` resultante se traduce a `409`.
+**Duplicados a nivel de BD.** `identificador_externo` tiene `UNIQUE` en PostgreSQL, no solo validación en código — evita condiciones de carrera entre un `SELECT` de verificación y el `INSERT`. El `IntegrityError` resultante se traduce a `409`. Esto se valida con una prueba de concurrencia real (`asyncio.gather`), no solo con el caso secuencial.
+
+**Excepciones de dominio en la capa de servicio.** `SolicitudService` no depende de FastAPI: en lugar de lanzar `HTTPException`, lanza excepciones propias del dominio (`SolicitudNoEncontrada`, `IdentificadorDuplicado`, `TransicionInvalida`, definidas en `core/domain_exceptions.py`). Un exception handler centralizado (`domain_exception_handler`) las traduce a los códigos HTTP correspondientes (404, 409, 422). Esto mantiene la lógica de negocio independiente del framework web y facilita testear el `service` de forma aislada.
 
 **Manejo de excepciones en capas:**
-1. Errores de negocio (`HTTPException`: 404/409/422) → mensajes específicos.
+1. Errores de negocio (excepciones de dominio → `HTTPException`: 404/409/422) → mensajes específicos.
 2. Validación de entrada (`RequestValidationError`) → mensajes legibles en español, sin exponer la estructura interna de Pydantic.
 3. Infraestructura (`DBAPIError` y `OSError`, cubriendo tanto errores traducidos por SQLAlchemy como fallos de red/DNS) → `503` genérico.
 4. No previstos (`Exception`) → `500` genérico. El detalle técnico completo solo se registra en logs, nunca se envía al cliente.
 
-**Logging JSON.** Cada request registra timestamp, nivel, servicio, `request_id` (también como header `X-Request-ID`), método, endpoint, status y duración. Las rutas `/health` y `/health/ready` se excluyen del logging del middleware para evitar ruido, ya que Docker las invoca automáticamente cada pocos segundos como parte del healthcheck.
+**Logging JSON y trazabilidad end-to-end.** Cada request registra timestamp, nivel, servicio, `request_id`, método, endpoint, status y duración. El consumidor genera un `request_id` por operación y lo envía como header `X-Request-ID`; el middleware de la API reutiliza ese `request_id` si ya viene en la petición entrante, en lugar de generar uno nuevo siempre. Esto permite correlacionar, con un único identificador, los logs de una misma operación a través de ambos servicios. Las rutas `/health` y `/health/ready` se excluyen del logging del middleware para evitar ruido, ya que Docker las invoca automáticamente cada pocos segundos como parte del healthcheck.
+
+**Healthcheck de disponibilidad real.** El healthcheck de Docker Compose para el servicio `api` apunta a `/health/ready` (no solo `/health`), verificando que la conexión a PostgreSQL esté realmente disponible antes de marcar el servicio como sano. Esto es importante porque el `consumer` depende de `api: condition: service_healthy` — con este cambio, el consumidor solo arranca cuando la API puede realmente atender solicitudes.
 
 **Base de datos de test separada (`db_test`)**, aislada de la de desarrollo, para pruebas reproducibles sin riesgo de borrar datos reales.
 
@@ -170,15 +177,15 @@ Una transición no permitida devuelve `422`.
 
 **Limitaciones actuales:**
 - No se implementó paginación en `GET /solicitudes`. Con el volumen de datos de esta prueba no representa un problema, pero en producción con muchos registros podría afectar el rendimiento.
-- El consumidor usa una lista de solicitudes de prueba definida en código, en lugar de leer los casos desde un archivo externo.
+- El consumidor usa una lista de solicitudes de prueba y parámetros de reintento (timeout, número de intentos) definidos en código, en lugar de leer estos valores desde variables de entorno o un archivo externo.
 - No se implementó autenticación ni autorización en la API (no formaba parte del alcance del enunciado).
-- Los tests cubren los endpoints de extremo a extremo contra una base de datos real de test, pero no incluyen pruebas unitarias aisladas de `service`/`repository` con mocks.
+- Los tests cubren los endpoints de extremo a extremo contra una base de datos real de test, incluyendo un caso de concurrencia real, pero no incluyen pruebas unitarias aisladas de `service`/`repository` con mocks.
 
 **Mejoras futuras propuestas:**
 - Paginación (`page`, `page_size`) y ordenamiento configurable en `GET /solicitudes`.
 - Endpoint de resumen/conteo por estado, útil para un futuro dashboard.
 - Historial de cambios de estado en una tabla separada, para auditoría más detallada.
-- Externalizar la configuración del consumidor (casos de prueba, reintentos, timeouts).
+- Externalizar la configuración del consumidor (casos de prueba, reintentos, timeouts) a variables de entorno.
 - Autenticación (API Key o JWT) antes de un despliegue real, según lo propuesto en `docs/Propuesta_Arquitectura_AWS.pdf`.
 
 ## Documentación adicional
