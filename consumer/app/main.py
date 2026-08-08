@@ -86,24 +86,31 @@ SOLICITUDES_DE_PRUEBA = [
 async def procesar_solicitud(api_client: ApiClient, client: httpx.AsyncClient, payload: dict):
     """Envia una solicitud y consulta su estado, sin detener la ejecucion si falla."""
     identificador = payload["identificador_externo"]
+    request_id = str(uuid.uuid4())
 
     try:
-        resultado = await api_client.crear_solicitud(client, payload)
+        resultado = await api_client.crear_solicitud(client, payload, request_id)
         logger.info(
             "Solicitud creada exitosamente",
-            extra={"identificador_externo": identificador, "id": resultado["id"], "estado": resultado["estado"]},
+            extra={
+                "request_id": request_id,
+                "identificador_externo": identificador,
+                "id": resultado["id"],
+                "estado": resultado["estado"],
+            },
         )
 
-        detalle = await api_client.obtener_solicitud(client, resultado["id"])
+        detalle = await api_client.obtener_solicitud(client, resultado["id"], request_id)
         logger.info(
             "Estado consultado",
-            extra={"id": detalle["id"], "estado": detalle["estado"]},
+            extra={"request_id": request_id, "id": detalle["id"], "estado": detalle["estado"]},
         )
 
     except httpx.HTTPStatusError as exc:
         logger.warning(
             "Solicitud rechazada por la API",
             extra={
+                "request_id": request_id,
                 "identificador_externo": identificador,
                 "status_code": exc.response.status_code,
                 "detail": exc.response.text,
@@ -112,10 +119,9 @@ async def procesar_solicitud(api_client: ApiClient, client: httpx.AsyncClient, p
     except httpx.RequestError as exc:
         logger.error(
             "Fallo de conexion tras agotar reintentos",
-            extra={"identificador_externo": identificador, "error": str(exc)},
+            extra={"request_id": request_id, "identificador_externo": identificador, "error": str(exc)},
         )
-
-
+        
 async def main():
     api_client = ApiClient(base_url=API_URL, timeout=5.0)
 

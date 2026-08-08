@@ -1,4 +1,5 @@
 import httpx
+import uuid
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -29,11 +30,12 @@ class ApiClient:
         retry=retry_if_exception(es_error_temporal),
         reraise=True,
     )
-    async def crear_solicitud(self, client: httpx.AsyncClient, payload: dict) -> dict:
+    async def crear_solicitud(self, client: httpx.AsyncClient, payload: dict, request_id: str) -> dict:
         response = await client.post(
             f"{self.base_url}/solicitudes",
             json=payload,
             timeout=self.timeout,
+            headers={"X-Request-ID": request_id},
         )
         response.raise_for_status()
         return response.json()
@@ -44,10 +46,11 @@ class ApiClient:
         retry=retry_if_exception(es_error_temporal),
         reraise=True,
     )
-    async def obtener_solicitud(self, client: httpx.AsyncClient, id: int) -> dict:
+    async def obtener_solicitud(self, client: httpx.AsyncClient, id: int, request_id: str) -> dict:
         response = await client.get(
             f"{self.base_url}/solicitudes/{id}",
             timeout=self.timeout,
+            headers={"X-Request-ID": request_id},
         )
         response.raise_for_status()
         return response.json()

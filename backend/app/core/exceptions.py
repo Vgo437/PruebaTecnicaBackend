@@ -4,6 +4,35 @@ from sqlalchemy.exc import DBAPIError
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from app.core.domain_exceptions import (
+    SolicitudNoEncontrada,
+    IdentificadorDuplicado,
+    TransicionInvalida,
+)
+
+
+async def domain_exception_handler(request: Request, exc: Exception):
+    """Traduce excepciones de dominio (negocio) a respuestas HTTP apropiadas."""
+    if isinstance(exc, SolicitudNoEncontrada):
+        status_code, detail = 404, "Solicitud no encontrada"
+    elif isinstance(exc, IdentificadorDuplicado):
+        status_code, detail = 409, "El identificador externo ya existe"
+    elif isinstance(exc, TransicionInvalida):
+        status_code, detail = 422, str(exc)
+    else:
+        status_code, detail = 500, "Error interno del servidor"
+
+    logger.warning(
+        "Excepcion de dominio",
+        extra={
+            "method": request.method,
+            "endpoint": request.url.path,
+            "status_code": status_code,
+            "detail": detail,
+        },
+    )
+    return JSONResponse(status_code=status_code, content={"detail": detail})
+
 
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError):

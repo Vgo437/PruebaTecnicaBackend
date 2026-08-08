@@ -1,4 +1,5 @@
 import pytest
+import asyncio
 
 
 async def test_crear_solicitud_valida(client):
@@ -155,3 +156,28 @@ async def test_actualizar_estado_solicitud_inexistente(client):
     )
 
     assert response.status_code == 404
+
+
+async def test_concurrencia_identificador_duplicado(client):
+    """Debe garantizar que, ante dos creaciones simultaneas con el mismo
+    identificador_externo, solo una tenga exito (201) y la otra falle (409),
+    incluso cuando ambas requests se disparan al mismo tiempo."""
+
+    payload = {
+        "identificador_externo": "TICKET-TEST-010",
+        "tipo_solicitud": "soporte_tecnico",
+        "nombre_solicitante": "Usuario concurrente",
+        "correo_electronico": "concurrente123@gmail.com",
+        "descripcion": "Prueba de condicion de carrera real",
+        "prioridad": "alta",
+    }
+
+    respuestas = await asyncio.gather(
+        client.post("/solicitudes", json=payload),
+        client.post("/solicitudes", json=payload),
+        return_exceptions=True,
+    )
+
+    codigos = sorted(r.status_code for r in respuestas)
+
+    assert codigos == [201, 409]

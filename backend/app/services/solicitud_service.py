@@ -1,9 +1,13 @@
 from typing import Optional
-from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.solicitud import Solicitud
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.solicitud_repository import SolicitudRepository
+from app.core.domain_exceptions import (
+    SolicitudNoEncontrada,
+    IdentificadorDuplicado,
+    TransicionInvalida,
+)
 from app.schemas.solicitud import (
     SolicitudCreate,
     EstadoSolicitud,
@@ -11,7 +15,6 @@ from app.schemas.solicitud import (
     PrioridadSolicitud,
 )
 
-# Transiciones de estado permitidas
 TRANSICIONES_VALIDAS = {
     EstadoSolicitud.RECIBIDA: {EstadoSolicitud.EN_PROCESO, EstadoSolicitud.RECHAZADA},
     EstadoSolicitud.EN_PROCESO: {EstadoSolicitud.COMPLETADA, EstadoSolicitud.RECHAZADA},
@@ -35,7 +38,7 @@ class SolicitudService:
         try:
             return await self.repo.create(nueva_solicitud)
         except IntegrityError:
-            raise HTTPException(status_code=409, detail="El identificador externo ya existe")
+            raise IdentificadorDuplicado()
 
     async def listar_solicitudes(
         self,
@@ -47,22 +50,19 @@ class SolicitudService:
         return await self.repo.list(estado, tipo_solicitud, prioridad)
 
     async def obtener_solicitud(self, id: int) -> Solicitud:
-        """Obtiene una solicitud por ID, o lanza 404 si no existe."""
+        """Obtiene una solicitud por ID, o lanza excepcion de dominio si no existe."""
         solicitud = await self.repo.get_by_id(id)
         if not solicitud:
-            raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+            raise SolicitudNoEncontrada()
         return solicitud
 
     async def actualizar_estado(self, id: int, nuevo_estado: EstadoSolicitud) -> Solicitud:
         """Actualiza el estado de una solicitud, validando que la transición sea permitida."""
         solicitud = await self.repo.get_by_id(id)
         if not solicitud:
-            raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+            raise SolicitudNoEncontrada()
 
         if nuevo_estado not in TRANSICIONES_VALIDAS[solicitud.estado]:
-            raise HTTPException(
-                status_code=422,
-                detail=f"No se puede cambiar de '{solicitud.estado.value}' a '{nuevo_estado.value}'"
-            )
+            raise TransicionInvalida(solicitud.estado, nuevo_estado)
 
         return await self.repo.update_estado(solicitud, nuevo_estado)

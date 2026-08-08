@@ -7,11 +7,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.middleware import LoggingMiddleware
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from app.core.domain_exceptions import (
+    SolicitudNoEncontrada,
+    IdentificadorDuplicado,
+    TransicionInvalida,
+)
 from app.core.exceptions import (
     http_exception_handler,
     validation_exception_handler,
     database_exception_handler,
     unhandled_exception_handler,
+    domain_exception_handler,
 )
 
 app = FastAPI(title="API de Solicitudes Institucionales para prueba tecnica", version="1.0.0")
@@ -19,10 +25,14 @@ app = FastAPI(title="API de Solicitudes Institucionales para prueba tecnica", ve
 
 app.include_router(router)
 app.add_middleware(LoggingMiddleware)
+
 app.add_exception_handler(OSError, database_exception_handler)
 app.add_exception_handler(DBAPIError, database_exception_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
+app.add_exception_handler(TransicionInvalida, domain_exception_handler)
 app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+app.add_exception_handler(SolicitudNoEncontrada, domain_exception_handler)
+app.add_exception_handler(IdentificadorDuplicado, domain_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
 

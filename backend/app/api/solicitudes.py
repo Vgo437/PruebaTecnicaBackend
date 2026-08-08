@@ -2,7 +2,7 @@ from typing import Optional
 from app.db.session import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.solicitud_service import SolicitudService
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, Query, Depends
 from app.schemas.solicitud import (
     EstadoSolicitud,
     TipoSolicitud,
